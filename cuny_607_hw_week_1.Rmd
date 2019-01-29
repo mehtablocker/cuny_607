@@ -1,0 +1,76 @@
+---
+title: "CUNY 607 HW Week 1"
+subtitle: "Exploration of Mushroom Data Set"
+author: "mehtablocker"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+###Load the data
+
+Use read.csv and readLines to get data directly from web
+
+```{r load_data}
+require(tidyr, quietly = T, warn.conflicts = F)
+require(dplyr, quietly = T, warn.conflicts = F)
+
+data_url <- "https://archive.ics.uci.edu/ml/machine-learning-databases/mushroom/agaricus-lepiota.data"
+mushroom_df <- read.csv(data_url, header=F, stringsAsFactors=F)
+attribute_url <- "https://archive.ics.uci.edu/ml/machine-learning-databases/mushroom/agaricus-lepiota.names"
+attribute_text <- readLines(attribute_url)
+```
+
+
+###Get column names
+
+Use various regex and R commands to find, clean, and populate column names, thereby (mostly) avoiding manual labor.
+
+```{r get_column_names}
+
+headers_text <- attribute_text[106:140]
+headers_list <- headers_text %>% strsplit(., "\\.")
+
+column_names <- headers_list %>% unlist()
+column_names <- column_names[column_names %>% grep(":", .)]
+column_names <- column_names %>% strsplit(., ":") %>% lapply(., function(x) x[1]) %>% unlist() %>% trimws()
+column_names[1] <- "edibility"
+column_names <- column_names %>% gsub("-", "_", .) %>% gsub("\\?", "", .)
+names(mushroom_df) <- column_names
+```
+
+
+###Replace abbreviations
+
+Make the data frame more readable by replacing one-letter abbreviations with the full words. Do this by first wrangling the abbreviations into a list of data frames (where each list element corresponds to a column of mushroom_df), and then looping through the list to match the abbreviation with the full word to replace within mushroom_df.
+
+```{r replace_abbreviations}
+
+abbrev_dict <- paste(headers_text, sep="", collapse="") %>% strsplit(., ":") %>% unlist()
+abbrev_dict <- abbrev_dict[-c(1,2)] %>% as.list()
+abbrev_dict <- abbrev_dict %>% lapply(., function(x) strsplit(x, ",") %>% unlist() %>% trimws())
+abbrev_dict <- abbrev_dict %>% lapply(., function(x) strsplit(x, " ") %>% unlist())
+abbrev_dict <- abbrev_dict %>% lapply(., function(x) x[grep("=", x)])
+abbrev_dict[[1]] <- abbrev_dict[[1]] %>% gsub(")", "", .)
+abbrev_dict <- abbrev_dict %>% 
+  lapply(., function(x) x %>% as.data.frame() %>% separate(., `.`, into=c("full", "short"), sep="="))
+
+for (i in 1:ncol(mushroom_df)){
+  mushroom_df[ ,i] <- abbrev_dict[[i]]$full[sapply(mushroom_df[ ,i], 
+                                                   function(x) which(abbrev_dict[[i]]$short==x)) %>% unname()]
+}
+```
+
+###View the cleaned-up data frame
+
+This looks much nicer!
+
+```{r exercise_6, results='asis'}
+knitr::kable(mushroom_df %>% head() %>% select(1:10))
+```
