@@ -76,3 +76,7 @@ knitr::kable(critic_ratings_df)
 ```
 
 As expected, the spread of ratings by movie is wider than the spread by critic.
+
+```{r boxplot}
+boxplot(critic_ratings_df$avg_rating, average_ratings_df$avg_rating, names=c("Ratings, by Critic", "Ratings, by Movie"))
+```
