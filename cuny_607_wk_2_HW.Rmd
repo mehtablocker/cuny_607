@@ -1,0 +1,78 @@
+---
+title: "CUNY 607"
+subtitle: "Week 2 HW Assignment"
+author: "mehtablocker"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(RMySQL)
+library(dplyr)
+library(dbplyr)
+
+```
+
+###Preparation
+
+1. Make sure you have MySQL installed. Then please run the following sql script in order to create the movie_review database:
+
+[Github_Link](https://raw.githubusercontent.com/mehtablocker/cuny_607/master/cuny_607_week_2_hw.sql)
+
+2. You will need to have the following R packages installed and loaded:  RMySQL, dplyr, dbplyr
+
+
+###Loading the SQL tables into R
+
+Be sure you use the correct username and password for your particular MySQL setup!
+
+```{r load_tables}
+mr_db <- src_mysql(dbname = 'movie_reviews', username = 'user', password = 'password')
+
+movie_df <- tbl(mr_db, "movie") %>% collect(n=Inf)
+critic_df <- tbl(mr_db, "critic") %>% collect(n=Inf)
+review_df <- tbl(mr_db, "review") %>% collect(n=Inf)
+
+```
+
+
+###Analyzing the data
+
+1. First let's see all of the reviews, sorted by movie title and rating, along with the critic's name:
+
+```{r join_tables, results="asis"}
+review_enhanced_df <- review_df %>% 
+  left_join(movie_df, by="movie_id") %>% 
+  left_join(critic_df, by="critic_id") %>% 
+  arrange(title, desc(movie_rating))
+
+knitr::kable(review_enhanced_df)
+```
+
+2. Which movie had the highest average rating?
+
+```{r best_movie, results="asis"}
+average_ratings_df <- review_enhanced_df %>% 
+  group_by(movie_id) %>% 
+  summarise(movie_title=tail(title,1),
+            avg_rating=mean(movie_rating, na.rm=T)) %>% 
+  ungroup() %>% arrange(desc(avg_rating))
+knitr::kable(average_ratings_df)
+```
+
+3. On average, what rating did each critic give across all movies?
+
+```{r critic_rating, results="asis"}
+critic_ratings_df <- review_enhanced_df %>% 
+  group_by(critic_id) %>% 
+  summarise(name=tail(critic_name,1),
+            avg_rating=mean(movie_rating, na.rm=T)) %>% 
+  ungroup() %>% arrange(desc(avg_rating))
+knitr::kable(critic_ratings_df)
+```
+
+As expected, the spread of ratings by movie is wider than the spread by critic.
