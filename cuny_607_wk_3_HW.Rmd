@@ -1,0 +1,88 @@
+---
+title: "CUNY 607"
+subtitle: "Week 3 HW Assignment"
+author: "mehtablocker"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+<style type="text/css">
+h3 {
+  color: DarkBlue;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(stringr)
+library(dplyr)
+
+```
+
+  
+###Problem 3
+
+```{r p_3}
+
+raw.data <- "555-1239Moe Szyslak(636) 555-0113Burns, C. Montgomery555-6542Rev. Timothy Lovejoy555 8904Ned Flanders636-555-3226Simpson, Homer5543642Dr. Julius Hibbert"
+name <- unlist(str_extract_all(raw.data, "[[:alpha:]., ]{2,}"))
+name
+
+### (a)  [Note: The question is slightly ambiguous. I assume they want no titles, and that e.g., "C." is considered a first name.]
+# create vector of titles
+titles <- c("Dr\\.", "Rev\\.", "Mr\\.", "Mrs\\.", "Miss", "Ms\\.")
+# split names with commas and paste in correct order
+name_first_last <- unlist(lapply(strsplit(name, ", "), function(x) ifelse(length(x)>1, paste0(x[2], " ", x[1]), x)))
+# loop through titles and gsub out
+for (i in 1:length(titles)){name_first_last <- trimws( gsub(titles[i], "", name_first_last) )}
+# get rid of any middle names
+name_first_last <- unlist(lapply(strsplit(name_first_last, " "), function(x) paste0(head(x,1), " ", tail(x,1))))
+name_first_last
+
+### (b)
+# apply grepl to the titles vector and combine into one boolean vector
+title_bool <- rowSums(sapply(titles, function(x) grepl(x, name)))>0
+title_bool
+
+### (c)  [Note: I assume they mean "second name, excluding title"]
+# find second names by two spaces and no title
+two_spaces <- unlist(lapply(str_locate_all(name, " "), function(x) nrow(x)>1))
+two_spaces & !title_bool
+
+```
+
+  
+###Problem 4
+
+```{r p_4}
+
+### (a) This regex matches sequential numbers followed by a dollar sign
+str_extract_all("It is odd to want 199$ and not $199.", "[0-9]+\\$")
+
+### (b) sequential lower case letters between 1 and 4 characters long that start or end with a word edge
+str_extract_all("Cost produces NO match, BUT cost WILL.", "\\b[a-z]{1,4}\\b")
+
+### (c) shortest possible sequence of any characters before and including the literal ".txt"
+str_extract_all("file.txt and then all of these words plus file2.txt ", ".*?\\.txt")
+
+### (d) a sequence of two numbers and a slash and two more numbers and a slash and four more numbers
+str_extract_all("1/3/98 will not get matched but 12/21/1976 will", "\\d{2}/\\d{2}/\\d{4}")
+
+### (e) captures text between html tags by saving a reference of the opening tag
+str_extract_all("This text won't match but <body> This whole element will. </body>", "<(.+?)>.+?</\\1>")
+
+```
+
+  
+###Problem 9
+
+```{r p_9}
+str_extract_all("clcopCow1zmstc0d87wnkig7OvdicpNuggvhryn92Gjuwczi8hqrfpRxs5Aj5dwpn0Tanwo
+Uwisdij7Lj8kpf03AT5Idr3coc0bt7yczjatOaootj55t3Nj3ne6c4Sfek.r1w1YwwojigO
+d6vrfUrbz2.2bkAnbhzgv4R9i05zEcrop.wAgnb.SqoU65fPa1otfb7wEm24k6t3sR9zqe5
+fy89n6Nd5t9kc4fE905gmc4Rgxo5nhDk!gr", "[A-Z]")
+```
