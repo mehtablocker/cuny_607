@@ -1,0 +1,90 @@
+---
+title: "CUNY 607"
+subtitle: "Project 1: Chess Ratings data"
+author: "mehtablocker"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+<style type="text/css">
+h3 {
+  color: DarkBlue;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr)
+library(readr)
+library(tidyr)
+
+```
+
+###Get data  
+```{r get_data}
+chess_raw <- suppressWarnings(readLines("https://raw.githubusercontent.com/mehtablocker/cuny_607/master/tournamentinfo.txt"))
+chess_raw %>% head()
+
+# Get rid of useless rows and columns
+chess <- chess_raw[-seq(1,length(chess_raw), by=3)]
+chess_df <- suppressWarnings(read_delim(chess, "|")) %>% select(-11)
+
+# Clean up attributes and column names
+attr(chess_df, "spec") <- NULL
+names(chess_df) <- names(chess_df) %>% trimws()
+names(chess_df)[grepl("Round", names(chess_df))] <- paste0("opp_round_", 1:7)
+chess_df <- chess_df %>% rename(total_pts=Total, tournament_id=Pair) %>% slice(-1)
+```
+
+###Wrangle columns
+```{r wrangle}
+chess_df <- suppressWarnings(chess_df %>% separate(`Player Name`, sep="/", into=c("player", "rtg")))
+chess_df <- chess_df %>% separate(rtg, sep="->", into=c("pre_rtg", "post_rtg"))
+chess_df <- chess_df %>% mutate(pre_rtg=parse_number(pre_rtg), post_rtg=parse_number(post_rtg))
+
+# The lead and lag functions are very useful
+chess_df <- chess_df %>% mutate(pre_rtg=lead(pre_rtg,1), post_rtg=lead(post_rtg,1), state=lead(tournament_id,1), uscf_id=lead(player,1))
+chess_df <- chess_df %>% slice(seq(1, nrow(chess_df), by=2))
+chess_df <- suppressWarnings(chess_df %>% mutate_at(vars(starts_with("opp_")), function(x) as.vector(parse_number(x))))
+```
+
+###Data types
+Make sure column values are of the correct data type
+```{r data_type}
+chess_df$tournament_id <- chess_df$tournament_id %>% trimws() %>% as.integer()
+chess_df$player <- chess_df$player %>% trimws()
+chess_df$total_pts <- chess_df$total_pts %>% trimws() %>% as.numeric()
+chess_df$state <- chess_df$state %>% trimws()
+chess_df$uscf_id <- chess_df$uscf_id %>% trimws() %>% as.integer
+```
+
+###Opponent ratings
+Create a new data frame by looping through the current columns of opponents and matching ids
+```{r opp_ratings}
+opp_rtg_df <- chess_df %>% select(starts_with("opp_"))
+for (j in 1:ncol(opp_rtg_df)){
+  for (i in 1:nrow(opp_rtg_df)){
+    if (!is.na(opp_rtg_df[i,j])){
+      opp_rtg_df[i,j] <- chess_df$pre_rtg[chess_df$tournament_id==unlist(opp_rtg_df[i,j])]
+    }
+  }
+}
+names(opp_rtg_df) <- paste0("rtg_", names(opp_rtg_df))
+
+# Bind the opponent ratings and calculate average rating
+chess_df <- chess_df %>% bind_cols(opp_rtg_df) %>% mutate(avg_opp_rtg=round(rowMeans(opp_rtg_df, na.rm=T), 0))
+```
+
+###Final
+Observe finished table and write to disk
+```{r final, results="asis"}
+chess_df_final <- chess_df %>% select(player, state, total_pts, pre_rtg, avg_opp_rtg)
+knitr::kable(chess_df_final %>% head())
+
+# Make sure you know which directory you are in!
+write.csv(chess_df_final, file="chess.csv", row.names=F)
+```
