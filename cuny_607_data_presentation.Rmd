@@ -1,0 +1,97 @@
+---
+title: "CUNY 607 Data Presentation"
+subtitle: "A Simple Baseball Linear Model"
+author: "mehtablocker"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+<style type="text/css">
+h3 {
+  color: DarkBlue;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+  
+###Libraries
+
+First we load the necessary libraries
+
+```{r library_load}
+
+library(dplyr)
+library(rvest)
+library(ggplot2)
+library(stringr)
+library(knitr)
+
+```
+
+  
+###Get the data
+
+Then use rvest to scrape the MLB standings from espn.com
+
+```{r get_data}
+
+season <- 2018
+url <- paste0('http://www.espn.com/mlb/standings/_/sort/winpercent/dir/desc/season/', season, '/group/overall')
+url_html <- url %>% read_html()
+html_tables <- url_html %>% html_table(fill=T)
+teams <- html_tables[[2]]
+teams %>% head()
+
+# use regex to extract team acronym - get uppercase letters followed by lowercase, then delete last two characters
+teams <- teams %>% rename(team=1) %>% mutate(team=str_extract_all(team, "[A-Z]{3,4}[a-z]") %>% substr(1, nchar(.)-2))
+teams %>% head()
+
+standings <- html_tables[[4]]
+standings %>% head()
+
+team_standings <- bind_cols(teams, standings)
+team_standings %>% head() %>% kable()
+```
+
+
+###Build a simple linear model
+
+Scoring runs should lead to winning
+
+```{r build_model}
+
+team_standings %>% ggplot(aes(x=RS, y=W)) + geom_point() + geom_smooth(method="lm", se=T)
+basic_lm_fit <- lm(W ~ RS, data=team_standings)
+summary(basic_lm_fit)
+
+```
+
+The R^2^ is around **0.69**, which is a Pearson correlation of about r=0.83. Not bad.
+
+
+###Expand the model
+
+Winning is also influenced by how many runs a team **allows**
+
+```{r expand_model}
+
+team_standings %>% ggplot(aes(x=DIFF, y=W)) + geom_point() + geom_smooth(method="lm", se=T)
+multi_lm_fit <- lm(W ~ RS + RA, data=team_standings)
+summary(multi_lm_fit)
+
+```
+
+The adjusted R^2^ has gone up to **0.90**. Adding in Runs Allowed made a significant improvement to the model.
+
+###Summary
+
+We acquired our data via web scraping and cleaned it using regular expressions. We then built a basic linear model, which was a decent fit. But we made it even better by expanding it slightly to a multivariate regression.  
+
+We now have a simple but effective (and interpretable) model for handicapping how many Wins a baseball team can expect based on how many runs they score and how many runs they allow.
