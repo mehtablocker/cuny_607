@@ -1,0 +1,155 @@
+---
+title: "CUNY 607"
+subtitle: "Week 5 HW Assignment"
+author: "mehtablocker"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+<style type="text/css">
+h3 {
+  color: DarkBlue;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+  
+###Load libraries
+
+```{r libraries, message=FALSE}
+
+library(stringr)
+library(dplyr)
+library(tidyr)
+library(zoo)
+library(ggplot2)
+library(knitr)
+```
+
+###Get data
+
+We will be working with a toy dataset of airlines. The csv file can be retrieved directly from Github. We can see that the data is in a "wide" format.
+
+```{r get_data}
+airline_raw <- read.csv("https://raw.githubusercontent.com/mehtablocker/cuny_607/master/airlines_HW_5.csv", stringsAsFactors = F)
+airline_raw %>% kable()
+```
+
+###Column headers and NAs
+
+Let's start by cleaning up the column names and getting rid of any NA values. We can "copy down" the missing airline names by using the na.locf() function in the zoo package.
+
+```{r column_na}
+airline_df <- airline_raw %>% rename(airline=1, status=2) %>% na.omit()
+airline_df <- airline_df %>% mutate(airline=ifelse(airline=="", NA, airline))
+airline_df$airline <- na.locf(airline_df$airline)
+airline_df %>% kable()
+```
+
+###Reduce width and clean
+
+We use the gather() function to go from wide to narrow. Then we use regex to clean up the city names.
+
+```{r reduce_width}
+airline_df <- airline_df %>% gather(key = city, value = n, Los.Angeles:Seattle)
+airline_df <- airline_df %>% mutate(city=gsub("\\.", " ", city))
+airline_df %>% head() %>% kable()
+```
+
+That's much better. Now we are ready to do some analysis.
+
+###Analysis
+
+**How many total flights did each airline provide?**
+
+```{r total_flights}
+airline_df %>% group_by(airline) %>% summarise(total_flights=sum(n)) %>% kable()
+```
+
+We can see America West had almost twice has many flights.
+
+<br>
+
+**What percentage of flights were delayed on each airline? **
+
+To answer that, we can spread out the status column to make our analysis easier.
+
+```{r delay_pct}
+airline_df_spread <- airline_df %>% 
+  mutate(status=ifelse(status=="on time", "n_on_time", "n_delayed")) %>% 
+  spread(status, n)
+airline_df_spread %>% group_by(airline) %>% 
+  summarise(total_delayed=sum(n_delayed), total_on_time=sum(n_on_time)) %>% ungroup() %>% 
+  mutate(delay_pct = round(100*total_delayed/(total_delayed+total_on_time),1)) %>% kable()
+```
+
+Despite providing twice as many flights, America West had a lower delay percentage than Alaska.
+
+<br>
+
+**Which airline / city combinations had the highest delay percentages?**
+
+```{r airline_city_delays}
+airline_df_spread <- airline_df_spread %>% 
+  mutate(n = n_delayed + n_on_time, delay_pct = round(100*n_delayed/n,1))
+airline_df_spread %>% arrange(desc(delay_pct)) %>% kable()
+```
+
+We can see that the two data points with the highest delay percentage belong to America West despite AW having an overall lower delay percentage than Alaska.
+
+A further inspection of the latter table, particularly the sample sizes, reveals that America West's low overall delay percentage is largely influenced by its Phoenix data point. This is even more obvious if we plot sample size against delay percentage for America West.
+
+```{r plot_AW}
+airline_df_spread %>% filter(airline=="AM WEST") %>% ggplot(aes(x=n, y=delay_pct))+geom_point()
+```
+
+If we compare each airline by city, we see that Alaska actually outperforms America West in every city:
+
+```{r barplot_compare}
+airline_df_spread %>% ggplot(aes(x=city, y=delay_pct, fill=airline)) + geom_bar(stat="identity", position=position_dodge())
+```
+
+<br>
+
+**Are the observed differences statistically significant?**
+
+Finally, we explore the important question about the role of chance as it pertains to the empirical data.
+
+Comparing the two airlines, we see America West's San Francisco delay percentage of 28.7% is much worse than Alaska's San Francisco delay percentage of 16.9%. But in sample sizes of 449 and 605, respectively, is this difference statistically significant? In other words, if we assumed that both airlines actually had the same *true* San Francisco delay percentage, how often would we observe a difference this large (or greater) simply by chance? 
+
+We can calculate the p-values of differences between two proportions for each city. To do so, we'll first make a dataframe joining the two airlines by city.
+
+```{r join_airlines}
+airlines_joined <- airline_df_spread %>% filter(airline=="ALASKA") %>% 
+  left_join(airline_df_spread %>% filter(airline=="AM WEST"), by="city")
+airlines_joined %>% kable()
+```
+
+Next we'll calculate the necessary statistics (weighted average delay percentage, observed difference, and combined standard error) to obtain the p-value for each row.
+
+```{r p_val}
+airlines_joined %>% 
+  mutate(weighted_pct = round(100*(n_delayed.x+n_delayed.y)/(n.x+n.y),1), 
+         standard_error_pct = round(sqrt(weighted_pct*(100-weighted_pct)/n.x+weighted_pct*(100-weighted_pct)/n.y),2), 
+         observed_diff = abs(delay_pct.x-delay_pct.y), 
+         p_value_obs_diff = round(pnorm(-1*observed_diff, 0, standard_error_pct)*2, 2)) %>% 
+  select(city, airline.x, n.x, delay_pct.x, airline.y, n.y, delay_pct.y, observed_diff, p_value_obs_diff) %>% 
+  kable()
+```
+
+According to the p-values, the probabilities of observing the differences by chance alone range from 0 to 13%. (Note, this methodology takes a frequentist approach, i.e., we assume no prior information.)
+
+###Conclusion
+
+We took a raw, "wide" dataset and cleaned it up to make it easy to use for analysis.
+
+We than ran a few analyses and learned that America West had a lower overall delay percentage than Alaska despite having twice as many flights in this sample dataset. However, the primary reason for that is America West's outstanding delay percentage in Phoenix over a very large number of flights.
+
+Alaska outperformed America West in every city. And after calculating statistical significance values, the overall numbers do not appear to be heavily influenced by chance.
