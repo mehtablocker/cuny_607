@@ -1,0 +1,119 @@
+---
+title: "CUNY 607"
+subtitle: "Project 2c: Super Bowl MVPs"
+author: "mehtablocker"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+<style type="text/css">
+h3 {
+  color: DarkBlue;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+  
+###Load libraries
+
+```{r libraries, message=FALSE}
+
+library(stringr)
+library(dplyr)
+library(tidyr)
+library(zoo)
+library(ggplot2)
+library(knitr)
+library(rvest)
+library(tibble)
+```
+
+###Get the data
+
+We start by using rvest to scrape the data from espn.com. We can see that the table needs a bit of cleaning.
+
+```{r get_data}
+url <- "http://www.espn.com/nfl/superbowl/history/mvps"
+url_html <- url %>% read_html()
+raw_df <- url_html %>% html_table(fill=T) %>% .[[1]]
+raw_df %>% head() %>% kable()
+```
+
+###Tidy the data
+
+We begin the cleaning process by turning the second row into column names and removing the non-data rows. We then convert the roman numerals into regular integers with help of the as.roman() function in base R. Finally, we use the separate() function to easily turn the PLAYER column into three separate columns of player, position, and team.
+
+```{r tidy_data}
+sb_mvp_df <- raw_df
+names(sb_mvp_df) <- sb_mvp_df[2,] %>% tolower() %>% gsub("[[:punct:]]", "", .)
+sb_mvp_df <- sb_mvp_df %>% slice(-c(1:2)) %>% as_tibble()
+sb_mvp_df <- sb_mvp_df %>% mutate(sb_number = as.integer(as.roman(no))) %>% select(sb_number, player, highlights)
+sb_mvp_df <- sb_mvp_df %>% separate(player, into=c("player", "position", "team"), sep=", ")
+sb_mvp_df %>% head() %>% kable()
+```
+
+###Analysis
+
+While this data presented a nice opportunity to tidy using some less common functions, it does not present a particularly rich opportunity for analysis. Nevertheless, we will look at a few obvious trends.
+
+<br>
+
+__Which position won MVP the most times?__
+
+```{r position_mvp}
+sb_mvp_grp_pos_df <- sb_mvp_df %>% 
+  group_by(position) %>% 
+  summarise(n = length(position)) %>% 
+  ungroup() %>% arrange(desc(n))
+sb_mvp_grp_pos_df %>% kable()
+sb_mvp_grp_pos_df %>% 
+  ggplot(aes(x=position, y=n, fill=position)) + 
+  scale_x_discrete(limits=sb_mvp_grp_pos_df$position) + 
+  geom_bar(stat="identity") + 
+  labs(title = "Number of Super Bowl MVPs by Position", x="Position", y="Count") + 
+  theme(legend.position = "none")
+```
+
+Quarterback is over four times more prevalent than the next position.
+
+<br>
+
+__Which Quarterback had the most passing yards?__
+
+To answer this question we can filter the table for QBs, then use regular expressions on the text in the highlights column.
+
+```{r passing_yds}
+qb_df <- suppressWarnings( sb_mvp_df %>% 
+  filter(position=="QB") %>% 
+  mutate(passing_yds = str_extract_all(highlights, "[[:digit:]]+ yards") %>% gsub(" yards", "", .) %>% as.integer(.)))
+qb_df %>% arrange(desc(passing_yds)) %>% head() %>% kable()
+```
+
+Tom Brady had the most, with 466 yards in Super Bowl 51.
+
+<br>
+
+__Which player had the most Touchdowns?__
+
+We can do a similar regular expression match on the full table to extract touchdown information.
+
+```{r most_td}
+suppressWarnings( sb_mvp_df %>% 
+  mutate(TD = str_extract_all(highlights, "[[:digit:]]+ TD") %>% gsub(" TD", "", .) %>% as.integer(.)) %>% 
+  arrange(desc(TD)) ) %>% head() %>% kable()
+```
+
+Steve Young had 6 touchdowns in Super Bowl 29.
+
+<br>
+
+###Summary
+
+While this data did not necessarily lend itself to complex analysis, it did offer the opportunity to tidy and analyze using functions like separate(), as.roman(), and various regular expressions.
