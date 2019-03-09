@@ -1,0 +1,142 @@
+---
+title: "CUNY 607"
+subtitle: "Project 2b: Zillow Home Value Data"
+author: "mehtablocker"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+<style type="text/css">
+h3 {
+  color: DarkBlue;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+  
+###Load libraries
+
+```{r libraries, message=FALSE}
+
+library(stringr)
+library(dplyr)
+library(tidyr)
+library(zoo)
+library(ggplot2)
+library(knitr)
+library(rvest)
+library(tibble)
+```
+
+###Get the data
+
+We start by importing the data from a csv file in Github. We can see that the table is in a "wide" format and needs to be cleaned up.
+
+```{r get_data}
+raw_df <- read.csv('https://raw.githubusercontent.com/mehtablocker/cuny_607/master/City_MedianValuePerSqft_AllHomes.csv', stringsAsFactors=F)
+raw_df %>% head() %>% kable()
+```
+
+###Tidy the data
+
+We use gather() to go from wide to narrow, then gsub() to clean up the new column. The new table is no longer in a wide format.
+
+```{r tidy_data}
+city_df <- raw_df %>% 
+  gather(key = year, value = value_per_sqft, X1997:X2019) %>% 
+  mutate(year=as.integer(gsub("X", "", year)))
+city_df %>% head() %>% kable()
+```
+
+###Analysis
+
+__How has the national median value per square foot changed throughout the years?__
+
+```{r nat_median}
+city_grp_year_df <- city_df %>% 
+  group_by(year) %>% 
+  summarise(national_value_per_sqft=median(value_per_sqft, na.rm=T))
+city_grp_year_df %>% kable()
+city_grp_year_df %>% 
+  ggplot(aes(x=year, y=national_value_per_sqft)) + 
+  geom_point() + geom_line() + 
+  labs(title = "National Median Home Value per Square Foot", x="Year", y="Dollars")
+```
+
+From the graph we can see values have doubled since 1997. We can also see the huge effect of the mortgage crisis in 2008. It took until 2018 (i.e., 10 years) to get back to 2008 levels.
+
+<br>
+
+__How does New York City compare to the national median?__
+
+We can filter the data by New York City's RegionID and then join it to the previous National data frame.
+
+```{r nyc_compare}
+nyc_df <- city_df %>% filter(RegionID == 6181) %>% select(year, nyc_value_per_sqft=value_per_sqft)
+national_nyc_df <- city_grp_year_df %>% left_join(nyc_df, by="year")
+national_nyc_df %>% kable()
+national_nyc_df %>% ggplot(aes(x=year)) + 
+  geom_point(aes(y=national_value_per_sqft)) + 
+  geom_line(aes(y=national_value_per_sqft, color="National")) + 
+  geom_point(aes(y=nyc_value_per_sqft)) + 
+  geom_line(aes(y=nyc_value_per_sqft, color="NYC")) + 
+  labs(title="Home Value per Square Foot", x="Year", y="Dollars", colour="") + 
+  scale_colour_manual(values=c("black", "red"))
+```
+
+In 1997, New York City was about twice the national value. Now it is over four times the national value! From peak to valley of the mortgage crisis, NYC lost only about 16% of its value compared to 21% at the national level.
+
+<br>
+
+__Which city is the most expensive each year?__
+
+```{r most_exp}
+city_df %>% group_by(year) %>% 
+  arrange(year, desc(value_per_sqft)) %>% 
+  slice(1) %>% 
+  select(year, everything()) %>% kable()
+```
+
+There are some unusual cities in that table. It might make more sense to put in a filter for population size.
+
+```{r most_exp_filtered}
+city_df %>% filter(SizeRank<=200) %>% 
+  group_by(year) %>% 
+  arrange(year, desc(value_per_sqft)) %>% 
+  slice(1) %>% 
+  select(year, everything()) %>% kable()
+```
+
+After filtering for the top 200 biggest cities, we can safely pity someone looking for housing in the San Francisco area right now. How does San Fran compare to NYC and national values?
+
+```{r sf_compare}
+sf_df <- city_df %>% filter(RegionID == 20330) %>% select(year, sf_value_per_sqft=value_per_sqft)
+national_nyc_sf_df <- national_nyc_df %>% left_join(sf_df, by="year")
+national_nyc_sf_df %>% kable()
+national_nyc_sf_df %>% ggplot(aes(x=year)) + 
+  geom_point(aes(y=national_value_per_sqft)) + 
+  geom_line(aes(y=national_value_per_sqft, color="National")) + 
+  geom_point(aes(y=nyc_value_per_sqft)) + 
+  geom_line(aes(y=nyc_value_per_sqft, color="NYC")) + 
+  geom_point(aes(y=sf_value_per_sqft)) + 
+  geom_line(aes(y=sf_value_per_sqft, color="SF")) + 
+  labs(title="Home Value per Square Foot", x="Year", y="Dollars", colour="") + 
+  scale_colour_manual(values=c("black", "red", "blue"))
+```
+
+From the graph we can see it's really in the past seven or eight years that San Francisco's value has exploded.
+
+<br>
+
+###Summary
+
+We imported a dataset of Zillow Home Values and transformed the table from a wide to narrow format, thereby making analysis easier. We then looked at how the national home value has changed in the last 22 years. Finally, we compared the national values to those of New York City and San Francisco.
+
+Going forward, it might be interesting to try and find this data at a level more granular than city/metro area. Some cities are so big that they encompass a wide variation of home values just within themselves. For example, while Manhattan and Newark may both techincally fall into the category of New York Metropolitan area, surely there is a large discrepancy in home values between them.
