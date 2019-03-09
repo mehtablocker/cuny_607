@@ -1,0 +1,133 @@
+---
+title: "CUNY 607"
+subtitle: "Project 2a: NYC Climate Data"
+author: "mehtablocker"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+<style type="text/css">
+h3 {
+  color: DarkBlue;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+  
+###Load libraries
+
+```{r libraries, message=FALSE}
+
+library(stringr)
+library(dplyr)
+library(tidyr)
+library(zoo)
+library(ggplot2)
+library(knitr)
+library(rvest)
+library(tibble)
+```
+
+###Get the data
+
+Use rvest to scrape data from wikipedia. We see that the table needs to be cleaned up.
+
+```{r get_data}
+url <- "https://en.wikipedia.org/wiki/Climate_of_New_York"
+url_html <- url %>% read_html()
+node_list <- url_html %>% html_nodes("table")
+raw_df <- node_list %>% .[[6]] %>% html_table(fill=T)
+raw_df %>% head() %>% kable()
+```
+
+###Tidy the data
+
+We'll replace the column names with the first row and transpose the data frame. Then use regular expressions to get rid of everything inside of parentheses. (We do not need Celsius values - Farenheit is enough.) Finally we'll turn the rownames into a column and format all columns. This output looks much better.
+
+```{r tidy_data}
+nyc_df <- raw_df
+names(nyc_df) <- nyc_df[1,]
+nyc_df <- nyc_df %>% slice(-n()) %>% slice(-1) %>% t()
+nyc_df <- apply(nyc_df, 2, function(x) gsub("\\([^)]*\\)", "", x))
+colnames(nyc_df) <- nyc_df[1,] %>% 
+  gsub("[[:punct:]]", "deg_", .) %>% 
+  trimws() %>% tolower() %>% 
+  gsub(" ", "_", .)
+months <- rownames(nyc_df)
+nyc_df <- nyc_df %>% as_tibble() %>% slice(-1) %>% 
+  mutate(month=months[-1]) %>% 
+  filter(month!="Year") %>% 
+  select(month, everything())
+nyc_df[, 2:ncol(nyc_df)] <- nyc_df[, 2:ncol(nyc_df)] %>% unlist() %>% 
+  iconv(., from = "UTF-8", to = "ASCII//TRANSLIT") %>% 
+  gsub("\\?", "-", .) %>% as.numeric()
+nyc_df %>% kable()
+```
+
+###Analysis
+
+There is a lot of information here, so for the purposes of this exercise we will look at only a few key things.
+
+<br>
+**Average high and low temperatures by month**
+
+```{r avg_high_low}
+nyc_df %>% ggplot(aes(x=month)) + scale_x_discrete(limits=month.abb) + 
+  geom_point(aes(y=average_high_deg_f, group=1)) + geom_line(aes(y=average_high_deg_f, group=1, col="Average High")) + 
+  geom_point(aes(y=average_low_deg_f, group=1)) + geom_line(aes(y=average_low_deg_f, group=1, col="Average Low")) + 
+  labs(title="Temperature in Central Park, 1981-2010", x="Month", y="Degrees in Farenheit", colour="") + 
+  scale_colour_manual(values = c("red", "blue"))
+```
+
+A few notable tidbits from examining the above graph:
+
+* July is the hottest month - a bit hotter than August
+* January is the coldest month
+* March is colder than November, both by Average High and Low
+
+The slope of the graph between months is interesting. Between which two months do we see the biggest change in temperature?
+
+```{r delta_temp}
+diff(c(nyc_df$average_high_deg_f, nyc_df$average_high_deg_f[1])); diff(c(nyc_df$average_low_deg_f, nyc_df$average_low_deg_f[1]))
+```
+
+The above numbers show the differences between months, in seasonal order, for the High and then the Low. For both it looks like the biggest increase is between March and April. The biggest decrease is between September and October.
+
+<br>
+**Record High and Low Temperatures**
+
+```{r record_temps}
+nyc_df %>% select(month, record_high_deg_f, record_low_deg_f) %>% kable()
+max(nyc_df$record_high_deg_f)
+min(nyc_df$record_low_deg_f)
+```
+
+The record high and low of 106 and -15 are not quite as extreme as I might have thought.
+
+<br>
+**Average Precipitation**
+
+Finally, let's take a look at average precipitation by month.
+
+```{r avg_precip}
+nyc_df %>% ggplot(aes(x=month, y=average_precipitation_inches, fill=month)) + 
+  scale_x_discrete(limits=month.abb) +
+  geom_bar(stat="identity") + 
+  labs(title = "Average Precipitation in Central Park, 1981-2010", x="Month", y="Inches") + 
+  theme(legend.position = "none")
+```
+
+February has quite a bit less precipitation than the other months. But for the most part the distribution is fairly flat.
+
+<br>
+
+###Summary
+
+We used rvest to scrape an interesting table of New York climate data. We needed to tidy the table quite a bit to get it into a format suitable for analysis. We then did some simple analyses on average temperatures, record temperatures, and average precipitation.
