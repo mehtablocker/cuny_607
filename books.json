@@ -1,0 +1,24 @@
+{"poker books" :[
+	{
+	"title" : "Professional No Limit Hold'em",
+	"authors" : ["Flynn, Matt", "Mehta, Sunny", "Miller, Ed"],
+	"year" : 2007,
+	"category" : "games",
+	"genre": "poker"
+	},
+	{
+	"title" : "Small Stakes No Limit Hold'em",
+	"authors" : ["Miller, Ed", "Mehta, Sunny", "Flynn, Matt"],
+	"year" : 2009,
+	"category" : "games",
+	"genre": "poker"
+	},
+	{
+	"title" : "Applications of No Limit Hold'em",
+	"authors" : "Janda, Matthew",
+	"year" : 2013,
+	"category" : "games",
+	"genre": "poker"
+	}]
+}
+

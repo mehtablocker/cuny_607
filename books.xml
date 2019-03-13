@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<poker_books>
+   <book id="1">
+      <title>Professional No Limit Hold'em</title>
+      <authors>Flynn, Matt; Mehta, Sunny; Miller, Ed</authors>
+      <year>2007</year>
+      <category>games</category>
+      <genre>poker</genre>
+   </book>
+   <book id="2">
+      <title>Small Stakes No Limit Hold'em</title>
+      <authors>Miller, Ed; Mehta, Sunny; Flynn, Matt</authors>
+      <year>2009</year>
+      <category>games</category>
+      <genre>poker</genre>
+   </book>
+   <book id="3">
+      <title>Applications of No Limit Hold'em</title>
+      <authors>Janda, Matthew</authors>
+      <year>2013</year>
+      <category>games</category>
+      <genre>poker</genre>
+   </book>      
+</poker_books>
