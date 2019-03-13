@@ -1,0 +1,122 @@
+---
+title: "CUNY 607"
+subtitle: "Week 7 HW Assignment"
+author: "mehtablocker"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+<style type="text/css">
+h3 {
+  color: DarkBlue;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+  
+###Load libraries
+
+```{r libraries, message=FALSE}
+
+library(dplyr)
+library(tidyr)
+library(rvest)
+library(jsonlite)
+library(knitr)
+```
+
+<br>
+
+__We will be working with toy data on poker books. The information is stored on Github in three different formats - html, xml, and json. The goal for each format is to load, parse, and tidy the data so that it is readily usable for analysis.__
+
+<br>
+
+###HTML
+
+We use rvest to parse the file. We then tidy the data by separating the multiple authors into one gathered column.
+
+```{r html}
+url <- "https://raw.githubusercontent.com/mehtablocker/cuny_607/master/books.html"
+url_html <- url %>% read_html()
+html_df <- url_html %>% html_table(fill=T) %>% .[[1]]
+html_df <- html_df %>% 
+  separate(authors, into=c("author1", "author2", "author3"), sep="; ", fill="right") %>% 
+  gather(author_type, author, author1:author3) %>% 
+  filter(!is.na(author))
+html_df <- html_df %>% 
+  group_by(title) %>% 
+  mutate(n_authors = length(author_type)) %>% 
+  ungroup() %>% 
+  mutate(author_type = ifelse(n_authors==1, "single", "co")) %>% 
+  select(title, author, author_type, year, category, genre) %>% 
+  arrange(year, title, author)
+html_df %>% kable()
+```
+
+<br>
+
+###XML
+
+We use rvest (which uses xml2) to parse the file. After viewing the structure of the nodes, we know which vectors to create and put into a data frame. Then we tidy the data by separating the multiple authors into one gathered column.
+
+```{r xml}
+url <- "https://raw.githubusercontent.com/mehtablocker/cuny_607/master/books.xml"
+url_xml <- url %>% read_xml()
+url_xml %>% xml_structure()
+title <- url_xml %>% xml_nodes('title') %>% xml_text()
+authors <- url_xml %>% xml_nodes('authors') %>% xml_text()
+year <- url_xml %>% xml_nodes('year') %>% xml_text()
+category <- url_xml %>% xml_nodes('category') %>% xml_text()
+genre <- url_xml %>% xml_nodes('genre') %>% xml_text()
+xml_df <- tibble(title, authors, year, category, genre)
+xml_df <- xml_df %>% 
+  separate(authors, into=c("author1", "author2", "author3"), sep="; ", fill="right") %>% 
+  gather(author_type, author, author1:author3) %>% 
+  filter(!is.na(author))
+xml_df <- xml_df %>% 
+  group_by(title) %>% 
+  mutate(n_authors = length(author_type)) %>% 
+  ungroup() %>% 
+  mutate(author_type = ifelse(n_authors==1, "single", "co")) %>% 
+  select(title, author, author_type, year, category, genre) %>% 
+  arrange(year, title, author)
+xml_df %>% kable()
+```
+
+<br>
+
+###JSON
+
+We use jsonlite to easily parse the file into a data frame. The authors column is imported as a list, so we extract it into separate columns, as before, and tidy it into one gathered column.
+
+```{r json}
+url <- "https://raw.githubusercontent.com/mehtablocker/cuny_607/master/books.json"
+url_json <- url %>% fromJSON()
+json_df <- url_json %>% .[[1]]
+json_df <- json_df %>% mutate(authors = lapply(authors, function(x) paste(x, collapse="; ")))
+json_df <- json_df %>% 
+  separate(authors, into=c("author1", "author2", "author3"), sep="; ", fill="right") %>% 
+  gather(author_type, author, author1:author3) %>% 
+  filter(!is.na(author))
+json_df <- json_df %>% 
+  group_by(title) %>% 
+  mutate(n_authors = length(author_type)) %>% 
+  ungroup() %>% 
+  mutate(author_type = ifelse(n_authors==1, "single", "co")) %>% 
+  select(title, author, author_type, year, category, genre) %>% 
+  arrange(year, title, author)
+json_df %>% kable()
+```
+
+<br>
+
+###Summary
+
+We took three files that were each in a different format (html, xml, and json) and wrangled them into similar data frames ready for analysis. Somewhat to my surprise, the xml format involved the most amount of work. Because the html file was already in a table format, rvest made life easy. And the jsonlite package allows instant conversion from a json file to an R data frame.
