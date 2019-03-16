@@ -1,0 +1,181 @@
+---
+title: "CUNY 607"
+subtitle: "Project 3"
+author: "mehtablocker"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+<style type="text/css">
+h3 {
+  color: DarkBlue;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+<br>
+
+__We will take a look at two datasets of job listings - one for New York City (i.e., government) jobs and another for technology jobs within New York City that were posted to dice.com. Both datasets were procured from kaggle.com.__
+
+<br>
+  
+###Load libraries
+
+```{r libraries, message=FALSE}
+
+library(stringr)
+library(dplyr)
+library(tidyr)
+library(zoo)
+library(ggplot2)
+library(knitr)
+```
+
+<br>
+
+###Get city jobs dataset
+
+We start by importing the data for NYC jobs from Github and cleaning up the column names. Then we remove duplicate listings.
+
+```{r get_first}
+raw_nyc_df <- read.csv('https://raw.githubusercontent.com/mehtablocker/cuny_607/master/project_3/nyc-jobs.csv')
+nyc_jobs_df <- raw_nyc_df
+names(nyc_jobs_df) <- names(nyc_jobs_df) %>% tolower() %>% gsub("\\.", "_", .)
+names(nyc_jobs_df)[names(nyc_jobs_df)=="x__of_positions"] <- "n_of_positions"
+nyc_jobs_df <- nyc_jobs_df %>% select(-posting_type) %>% unique()
+nyc_jobs_df %>% tail() %>% kable()
+```
+
+<br>
+
+###Filter for data-specific jobs
+
+We filter for data science jobs by using a regular expression to search the business_title column for the case insensitive terms "data" or "analytics." Then we create another table for non-data jobs.
+
+```{r filter_first}
+data_jobs_df <- nyc_jobs_df %>% filter(grepl("data|analytics", business_title, ignore.case = T))
+other_jobs_df <- nyc_jobs_df %>% filter(!grepl("data|analytics", business_title, ignore.case = T))
+data_jobs_df %>% head() %>% kable()
+```
+
+<br>
+
+###Analyze quantity and salary
+
+We can see from the above table that a lot of key values are missing, including Job Description and Preferred Skills. This significantly limits our analysis capabilities to only a few areas.
+
+<br>
+
+__Of all the jobs working for New York City, how many are data jobs?__
+
+```{r analyze_first_1}
+
+### Total number of jobs in the dataset:
+nrow(nyc_jobs_df)
+
+### Number of data jobs:
+nrow(data_jobs_df)
+
+### Data jobs, as a percentage of total:
+nrow(data_jobs_df)/nrow(nyc_jobs_df)
+```
+
+In this dataset, only about 3.2 percent of jobs are data jobs.
+
+<br>
+
+__In terms of the high range of salary, how well do data jobs pay relative to non-data jobs?__
+
+```{r analyze_first_2}
+
+### Data jobs
+summary(data_jobs_df$salary_range_to)
+
+### Non-data jobs
+summary(other_jobs_df$salary_range_to)
+
+par(mfrow=c(1,2))
+boxplot(data_jobs_df$salary_range_to, xlab="Data Jobs", ylab="Salary in Dollars", ylim=c(0, 200000))
+boxplot(other_jobs_df$salary_range_to, xlab="Non-Data Jobs", ylab="Salary in Dollars", ylim=c(0, 200000))
+par(mfrow=c(1,1))
+```
+
+The distribution is wider for non-data jobs, but the median salary is higher for data jobs. It is important to remember that these are all government jobs, which overall may pay less than private sector jobs.
+
+<br>
+
+###Get Dice jobs
+
+Next we import the data for technology jobs within New York City that were posted to dice.com. We separate one of the columns and rename a few others.
+
+```{r get_sec}
+raw_dice_df <- read.csv('https://raw.githubusercontent.com/mehtablocker/cuny_607/master/project_3/dice_com_nyc_jobs.csv', stringsAsFactors = F)
+dice_jobs_df <- as_tibble(raw_dice_df) %>% 
+  separate(employmenttype_jobstatus, into=c("employment_type", "job_status"), sep = ", ", fill="right", extra = "drop")
+dice_jobs_df <- dice_jobs_df %>% 
+  rename(advertiser_url = advertiserurl, 
+         job_description = jobdescription,
+         job_id = jobid, 
+         job_location = joblocation_address, 
+         job_title = jobtitle, 
+         post_date = postdate)
+dice_jobs_df %>% head(1) %>% kable()
+```
+
+<br>
+
+###Filter for data science jobs
+
+Since this dataset is comprised of only technology jobs, finding specifically data science jobs may require a bit more nuance. For example, if we try to filter for the words "data" or "analytics" as before, we catch a lot of software developer jobs that are not exactly the same subspace as data science.
+
+```{r filter_sec_1}
+ds_dice_df <- dice_jobs_df %>% filter(grepl("data|analytics", job_title, ignore.case = T))
+ds_dice_df %>% select(job_title, company, employment_type, skills) %>% head() %>% kable()
+```
+
+We can refine our search by excluding words like "engineer" and "architect" to get a more relevant result.
+
+```{r filter_sec_2}
+ds_dice_df <- ds_dice_df %>% 
+  filter(!grepl("architect|architecture|engineer|developer|development|administrator|administration", job_title, ignore.case = T))
+ds_dice_df %>% select(job_title, company, employment_type, skills) %>% head() %>% kable()
+```
+
+<br>
+
+###Search for keywords
+
+We can text mine the job_description and skills columns to find specific keywords.
+
+<br>
+
+__How many job postings mention the R programming language?__
+
+```{r analyze_sec_1}
+r_dice_df <- ds_dice_df %>% 
+  filter(grepl(" R | R,", job_description, ignore.case=T) | grepl(" R | R,", skills, ignore.case=T))
+nrow(r_dice_df)
+r_dice_df %>% head(1) %>% kable()
+```
+
+Of our 59 filtered job listings, six explicitly mention R.
+
+<br>
+
+__How many job postings mention Python?__
+
+```{r analyze_sec_2}
+python_dice_df <- ds_dice_df %>% 
+  filter(grepl(" python | python,", job_description, ignore.case=T) | grepl(" python | python,", skills, ignore.case=T))
+nrow(python_dice_df)
+python_dice_df %>% head(1) %>% kable()
+```
+
+Of our 59 filtered job listings, eight explicitly mention Python.
