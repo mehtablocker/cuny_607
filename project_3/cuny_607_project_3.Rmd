@@ -13,7 +13,24 @@ output:
 h3 {
   color: DarkBlue;
 }
+th, td {
+  overflow-wrap: break-word;
+  max-width: 100px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+	white-space: nowrap;
+}
+div.dataTables_wrapper {
+    margin: 0 auto;
+}
+div.container {
+    width: 80%;
+}
+tr {
+    max-height: 30px;
+}
 </style>
+
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -22,7 +39,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 <br>
 
-__We will take a look at two datasets of job listings - one for New York City (i.e., government) jobs and another for technology jobs within New York City that were posted to dice.com. Both datasets were procured from kaggle.com.__
+__We will take a look at two datasets of job listings - one for New York City government jobs and another for technology jobs within New York City that were posted to dice.com. Both datasets were procured from kaggle.com.__
 
 <br>
   
@@ -44,7 +61,7 @@ library(knitr)
 
 We start by importing the data for NYC jobs from Github and cleaning up the column names. Then we remove duplicate listings.
 
-```{r get_first}
+```{r get_first, cache=TRUE}
 raw_nyc_df <- read.csv('https://raw.githubusercontent.com/mehtablocker/cuny_607/master/project_3/nyc-jobs.csv')
 nyc_jobs_df <- raw_nyc_df
 names(nyc_jobs_df) <- names(nyc_jobs_df) %>% tolower() %>% gsub("\\.", "_", .)
@@ -115,7 +132,7 @@ The distribution is wider for non-data jobs, but the median salary is higher for
 
 Next we import the data for technology jobs within New York City that were posted to dice.com. We separate one of the columns and rename a few others.
 
-```{r get_sec}
+```{r get_sec, cache=T}
 raw_dice_df <- read.csv('https://raw.githubusercontent.com/mehtablocker/cuny_607/master/project_3/dice_com_nyc_jobs.csv', stringsAsFactors = F)
 dice_jobs_df <- as_tibble(raw_dice_df) %>% 
   separate(employmenttype_jobstatus, into=c("employment_type", "job_status"), sep = ", ", fill="right", extra = "drop")
@@ -126,7 +143,7 @@ dice_jobs_df <- dice_jobs_df %>%
          job_location = joblocation_address, 
          job_title = jobtitle, 
          post_date = postdate)
-dice_jobs_df %>% head(1) %>% kable()
+dice_jobs_df %>% head() %>% kable()
 ```
 
 <br>
@@ -162,7 +179,7 @@ __How many job postings mention the R programming language?__
 r_dice_df <- ds_dice_df %>% 
   filter(grepl(" R | R,", job_description, ignore.case=T) | grepl(" R | R,", skills, ignore.case=T))
 nrow(r_dice_df)
-r_dice_df %>% head(1) %>% kable()
+r_dice_df %>% head() %>% kable()
 ```
 
 Of our 59 filtered job listings, six explicitly mention R.
@@ -175,7 +192,35 @@ __How many job postings mention Python?__
 python_dice_df <- ds_dice_df %>% 
   filter(grepl(" python | python,", job_description, ignore.case=T) | grepl(" python | python,", skills, ignore.case=T))
 nrow(python_dice_df)
-python_dice_df %>% head(1) %>% kable()
+python_dice_df %>% head() %>% kable()
 ```
 
 Of our 59 filtered job listings, eight explicitly mention Python.
+
+<br>
+
+###Keywords in Indeed data
+
+We load Mary Anna's dataset from indeed.com.
+
+```{r load_indeed}
+listings_db <- src_postgres(host="mkivenson-job-scrape-data.cvc7wr5vvljm.us-east-1.rds.amazonaws.com", user="postgres", password="postgres607", dbname="listings")
+listings_df <- tbl(listings_db, "listings") %>% collect(n=Inf)
+nrow(listings_df)
+```
+
+<br>
+
+We can re-run the same keyword searches for R and Python on this new dataset.
+
+```{r indeed_key}
+r_listings_df <- listings_df %>% 
+  filter(grepl(" R | R,", description, ignore.case=T) | grepl(" R | R,", summary, ignore.case=T))
+nrow(r_listings_df)
+
+python_listings_df <- listings_df %>% 
+  filter(grepl(" python | python,", description, ignore.case=T) | grepl(" python | python,", summary, ignore.case=T))
+nrow(python_listings_df)
+```
+
+Of the 1111 data science job listings on Indeed, 463 explicitly mention R and 586 mention Python.
