@@ -1,6 +1,6 @@
 ---
 title: "Project 3"
-author: "Mary Anna Kivenson"
+author: "mehtablocker"
 date: "3/17/2019"
 output:
   html_document:
