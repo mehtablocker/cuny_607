@@ -1,0 +1,87 @@
+---
+title: "CUNY 607"
+subtitle: "Week 9 HW Assignment"
+author: "mehtablocker"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+<style type="text/css">
+h3 {
+  color: DarkBlue;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+<br>
+
+__Our goal is to use the New York Times developer API service to search for all articles since January 2019 that contain the word "sabermetrics." We are big baseball analytics fans and would like to read all of the returned articles.__
+
+<br>
+
+###Load libraries
+
+```{r libraries, message=FALSE}
+
+library(httr)
+library(dplyr)
+library(tidyr)
+library(rvest)
+library(jsonlite)
+library(knitr)
+```
+
+<br>
+
+###Get API key
+
+We start by going to the New York Times website and signing up for an API key. After doing so, we copy and paste the API key into a text file called "nyt_api.txt" and place the file into our current working directory. (This for security purposes.) From there we can read it into R.
+
+```{r api_key}
+api_key <- readLines("nyt_api.txt")
+```
+
+<br>
+
+###Construct Search URL
+
+The New York Times website gives instructions on how to form a URL string to achieve a specific search query. We use that information, particularly the query text, start date, and end date to paste together the pertinent URL. The API returns only 10 results at a time, so we will start with the first page of results and then see if we need more.
+
+```{r search_url}
+query_text <- "sabermetrics"
+start_date <- "2019-01-01"
+finish_date <- Sys.Date()
+return_page <- "0"
+
+base_url <- "https://api.nytimes.com/svc/search/v2/"
+api_slug <- "articlesearch.json"
+
+full_url <- paste0(base_url, api_slug, "?q=", query_text, "&begin_date=", start_date, "&end_date=", finish_date, "&page=", return_page, "&api-key=", api_key)
+
+```
+
+<br>
+
+###Get results
+
+Now that we have constructed the correct search string, we can use the httr and jsonlite packages to get the content of the query. We traverse the resulting json object and extract the links of the sabermetrics articles we are interested in.
+
+```{r get_results}
+httr_obj <- GET(full_url)
+content_obj <- content(httr_obj, as="text")
+jl_obj <- fromJSON(content_obj)
+article_links <- jl_obj[["response"]][["docs"]]["web_url"]
+
+article_links %>% kable()
+```
+
+<br>
+
+__There are only two articles, so we can use the links to view them online directly.__
