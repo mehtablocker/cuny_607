@@ -1,0 +1,228 @@
+---
+title: "CUNY 607"
+subtitle: "Project 4"
+author: "mehtablocker"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+<style type="text/css">
+h3 {
+  color: DarkBlue;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+  
+###Load libraries
+
+```{r libraries, message=FALSE}
+
+library(naivebayes)
+library(glmnet)
+library(dplyr)
+library(tidyr)
+library(rvest)
+library(ggplot2)
+library(tidytext)
+library(knitr)
+```
+
+<br>
+
+__For this project we will import a public dataset of several thousand SMS texts each labeled "spam" or "ham" (i.e., not spam.) Our goal is to build a model capable of predicting whether new texts are spam or ham. We will compare two different models to see how they perform.__
+
+<br>
+
+###Get the data
+
+We start by importing the data from Github (originally procured from engineeringbigdata.com) and making sure it is initially tidy.
+
+```{r get_data}
+raw_df <- read.csv("https://raw.githubusercontent.com/mehtablocker/cuny_607/master/project_4/sms_spam_ham.csv", stringsAsFactors = F)
+raw_df %>% head() %>% kable()
+```
+
+<br>
+
+###Separate the data
+
+We take a portion of the data and withhold it from our training model so we can use it to test on.
+
+```{r separate_data}
+sms_df <- raw_df %>% as_tibble() %>% mutate(ind=1:nrow(raw_df)) %>% rename(category=1)
+train_df <- sms_df %>% sample_frac(0.8)
+test_df <- sms_df %>% anti_join(train_df, by="ind")
+```
+
+<br>
+
+###Word dissection
+
+We use the tidytext package to break down all of the SMS texts into single words.
+
+```{r tidytext}
+train_words_df <- train_df %>% unnest_tokens(word, text)
+train_words_df %>% arrange(ind) %>% head() %>% kable()
+```
+
+We are interested in how often each word is associated with spam or ham. So we group the data frame by word and calculate the percentage of SMS texts that are spam.
+
+```{r spam_pct}
+word_spam_pct <- train_words_df %>% 
+  group_by(word) %>% 
+  summarise(n = length(category), spam_pct = mean(category=="spam")) %>% 
+  ungroup()
+word_spam_pct %>% arrange(desc(n)) %>% head() %>% kable()
+```
+
+<br>
+
+###Delta spam percentage
+
+If there were no link between any specific words and spam, we would expect every word's spam percentage to be the base rate spam percentage, plus or minus some statistical error. We do not believe this to be the case, so we will calculate every word's "delta spam percentage", in other words, the amount that each word "adds" or "subtracts" to spam over and above the base rate.
+
+To do this we could simply take each word's empirical spam percentage and subtract the base rate spam percentage. However, some of the words have very high or very low empirical percentages simply due to small sample size. Rather than set a filter based on some minumum sample size, instead we will regress each value to the mean by averaging 100 fictitious instances of the base rate to every word's empirical spam percentage.
+
+(Note: this is equivalent to using a Bayesian prior. We could be more exact by building a Beta distributed prior with more precise estimates for the shape parameters, but a shortcut will suffice here. We'll somewhat arbitrarily choose 100 for the regression sample size and the base rate spam percentage for the regression point.)
+
+After regressing every word's spam percentage toward the mean, we then subtract the base rate to get a delta spam percentage for each word.
+
+```{r dsp}
+# Base rate
+prior_spam_freq <- table(train_df$category)/length(train_df$category)
+prior_spam_freq
+prior_n <- 100
+
+# Regress toward the mean and subtract the base rate
+word_spam_pct <- word_spam_pct %>% 
+  mutate(spam_pct_regr = (prior_spam_freq["spam"]*prior_n + spam_pct*n)/(prior_n+n), 
+         delta_spam_pct = spam_pct_regr - prior_spam_freq["spam"])
+word_spam_pct %>% arrange(desc(delta_spam_pct)) %>% head() %>% kable()
+```
+
+Now that we have a value for how much every word adds or subtracts to spam, we can get a total summed value for each SMS text and visualize the distributions by actual spam and ham.
+
+```{r visualize_dsp}
+train_dsp <- train_words_df %>% 
+  left_join(word_spam_pct %>% select(word, delta_spam_pct), by="word") %>% 
+  group_by(ind) %>% summarise(total_dsp = sum(delta_spam_pct, na.rm=T)) %>% ungroup()
+train_dsp <- train_dsp %>% left_join(train_df, by="ind")
+
+train_dsp %>% 
+  ggplot(aes(x=category, y=total_dsp, fill=category)) + 
+  geom_boxplot() + 
+  labs(title="SMS Total Delta Spam Percentage by Category", x="Category", y="Total Delta Spam%")
+
+train_dsp %>% 
+  ggplot(aes(x=total_dsp, fill=category)) + 
+  geom_density(alpha=0.8, color="black") + 
+  labs(title="SMS Total Delta Spam Percentage by Category", x="Total Delta Spam%", y="Density")
+```
+
+While there is some overlap, there is also pretty clear segmentation between the two categories.
+
+<br>
+
+###Train a Naive Bayes model
+
+Armed with a spam "score" for each SMS text as well as a response variable (i.e., whether the text was actually spam or ham), we can fit a supervised learning model to allow us to make future predictions. Here we will use the Naive Bayes algorithm from the naivebayes package.
+
+```{r nb_train}
+train_model <- naive_bayes(category ~ total_dsp, data = train_dsp, usekernel = T)
+train_predict <- predict(train_model, train_dsp)
+train_conf_mat <- table(train_predict, train_dsp$category)
+
+# Confusion matrix
+train_conf_mat
+
+# Percent accuracy
+sum(diag(train_conf_mat))/sum(train_conf_mat)
+```
+
+Above is the confusion matrix and percent accuracy for the training data. Now we use the model on the test data that was previously withheld.
+
+```{r nb_test}
+test_words_df <- test_df %>% unnest_tokens(word, text)
+test_dsp <- test_words_df %>% 
+  left_join(word_spam_pct %>% select(word, delta_spam_pct), by="word") %>% 
+  group_by(ind) %>% summarise(total_dsp = sum(delta_spam_pct, na.rm=T)) %>% ungroup()
+test_dsp <- test_dsp %>% left_join(test_df, by="ind")
+
+test_model <- naive_bayes(category ~ total_dsp, data = test_dsp, usekernel = T)
+test_predict <- predict(test_model, test_dsp)
+test_conf_mat <- table(test_predict, test_dsp$category)
+
+# Confusion matrix
+test_conf_mat
+
+# Percent accuracy
+sum(diag(test_conf_mat))/sum(test_conf_mat)
+```
+
+Even on the test data, our accuracy of `r round(100*sum(diag(test_conf_mat))/sum(test_conf_mat), 1)` percent is quite a bit better than the `r round(100*unname(prior_spam_freq["ham"]), 1)` percent we could have achieved by randomly guessing based on the base rate.
+
+<br>
+
+###Compare to second model
+
+Lastly, we build a second model for the sake of comparison. For this we use a methodology similar to what is described by Julia Silge here: https://juliasilge.com/blog/tidy-text-classification/
+
+We create a document-term matrix and fit a logistic regression model with LASSO regularization using the glmnet package.
+
+```{r dtm_glm}
+sparse_words_mat <- train_words_df %>% 
+  group_by(word) %>% filter(n() > 5) %>% ungroup() %>% 
+  count(ind, word) %>% cast_sparse(ind, word, n)
+response_df <- tibble(ind = as.integer(rownames(sparse_words_mat))) %>% 
+  left_join(train_df %>% select(ind, category), by="ind") %>% 
+  mutate(is_spam=category=="spam")
+
+glm_model <- cv.glmnet(sparse_words_mat, response_df$is_spam, family = "binomial")
+glm_coefs <- glm_model$glmnet.fit %>%
+  tidy() %>%
+  filter(lambda == glm_model$lambda.1se)
+glm_intercept <- glm_coefs %>%
+  filter(term == "(Intercept)") %>%
+  pull(estimate)
+```
+
+Using the fitted model on the test data gives us a probability of spam for each SMS text. To convert the probabilities into binary predictions of spam/ham we set a threshold of 0.5, which also yields an overall spam percentage similar to the base rate. We then check the accuracy of the predictions.
+
+```{r glm_test}
+test_classifications <- test_words_df %>% 
+  inner_join(glm_coefs, by = c("word" = "term")) %>%
+  group_by(ind) %>%
+  summarize(score = sum(estimate)) %>%
+  mutate(probability = plogis(glm_intercept + score))
+
+# Threshold of 0.5 yields similar base rate
+mean(test_classifications$probability>0.5)
+
+test_classifications <- test_classifications %>% 
+  left_join(test_df, by="ind") %>% 
+  mutate(prediction = ifelse(probability>0.5, "spam", "ham"))
+
+glm_conf_mat <- table(test_classifications$prediction, test_classifications$category)
+
+# Confusion matrix
+glm_conf_mat
+
+# Percent accuracy
+sum(diag(glm_conf_mat))/sum(glm_conf_mat)
+```
+
+From the above confusion matrix and accuracy percentage we see that this model performs fairly similarly to the Delta Spam Percentage / Naive Bayes model.
+
+<br>
+
+###Summary
+
+__We imported a dataset of SMS texts labeled "spam" or "ham" which we then decomposed into single words. We created two different models, one using a "homegrown" metric and Naive Bayes classifier and another using a document-term matrix and logistic regression, to try and predict spam in our test data. Both models performed similarly in terms of accuracy, and both outperformed the base rate by a significant margin.__
