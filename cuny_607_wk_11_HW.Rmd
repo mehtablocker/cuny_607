@@ -1,0 +1,54 @@
+---
+title: "CUNY 607"
+subtitle: "Week 11 HW"
+author: "mehtablocker"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+<style type="text/css">
+h3 {
+  color: DarkBlue;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+  
+###Introduction
+
+An existing recommender system I find extremely interesting is that of the company Spotify. Every week Spotify provides me with a music playlist, called "Discover Weekly", which is customized for me based on my preferences. I am continually impressed with how much music I have enjoyed and discovered due to this playlist.
+
+###Scenario Design Analysis
+
+1. __Who are the target users?__
+
+The target users are Spotify's customers. There is a Free and Premium version of the product. So, customers can be thought of as belonging to one of each group.
+
+2. __What are their key goals?__
+
+Spotify's key goal is keeping customers happy and engaged, i.e. listening to music. That means doing what they can to attract Free customers to the Premium product, and avoiding churn of the current Premium customers.
+
+The customers' key goals are seamlessly enjoying the music they currently like, and discovering new music to enjoy.
+
+3. __How can you help them accomplish those goals?__
+
+Spotify can help the customers achieve their goals by providing reliable software (e.g., low latency/buffering, ease of use for the mobile application, intuitive integration with various audio systems), and having good algorithms for recommender systems.
+
+###Reverse Engineering
+
+An internet search reveals several articles about Spotify's investment in machine learning algorithms. This one in particular is a bit more technical and touches on Collaborative Filtering being a more desirable system than Item Filtering.
+
+[Harvard Business School article](https://rctom.hbs.org/submission/discover-weekly-how-spotify-is-changing-the-way-we-consume-music/)
+
+###Going Forward
+
+My one specific recommendation to Spotify would be to consider "clustering" their recommendations. For example, I may happen to like two very different genres of music (e.g., heavy metal and jazz) that I enjoy on different occasions. Rather than put similar music from both genres in the same playlist, they could provide two different playlists.
+
+Another example: A person may listen to ambient meditation sounds on the train ride to work but listen to hip-hop music after work en route to going out with friends for the evening. That person probably does not want to listen to a playlist that alternates songs between the two genres!
