@@ -1,0 +1,94 @@
+---
+title: "CUNY 607"
+subtitle: "Week 12 HW"
+author: "mehtablocker"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+<style type="text/css">
+h3 {
+  color: DarkBlue;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+<br>
+
+__In this exercise we will migrate a database from MySQL to MongoDB.__
+
+<br>
+
+###Load libraries
+
+```{r libraries, message=FALSE}
+
+library(mongolite)
+library(dplyr)
+library(tidyr)
+library(rvest)
+library(ggplot2)
+library(knitr)
+```
+
+<br>
+
+###Preparation
+
+Make sure you have MySQL installed. Then please run the following sql script in order to create the movie_review database:
+
+[Github_Link](https://raw.githubusercontent.com/mehtablocker/cuny_607/master/cuny_607_week_2_hw.sql)
+
+<br>
+
+###Loading the SQL tables into R
+
+Be sure you use the correct username and password for your particular MySQL setup! We then loop through all of the tables in the db and store them each as a data frame in one list called df_list.
+
+```{r load_tables}
+my_db <- src_mysql(dbname = 'movie_reviews', username = 'user', password = 'password')
+my_tables <- db_list_tables(my_db$con)
+print(my_tables)
+
+df_list <- list()
+
+for (i in my_tables){
+  df_list[[i]] <- tbl(my_db, i) %>% collect(n=Inf)
+}
+
+df_list %>% head()
+```
+
+<br>
+
+###Migrate to MongoDB
+
+We then use the mongolite package in R to easily insert the data frames as collections into a Mongo database.  
+
+Please be sure to set the variable `mongo_url` to your particular mongo database location. The default is "mongodb://localhost" but you may have a cloud version you prefer. For security purposes I saved my particular URL in a local file and access it with the `readLines()` function.  
+
+You can also choose your own value for `db=` within the `mongo()` function. The default is "test".
+
+```{r mongo_migrate}
+mongo_url <- readLines("mongodb_server_url.txt")
+
+for (i in my_tables){
+  con <- mongo(collection = i, db = "test", url = mongo_url)
+  con$insert(df_list[[i]])
+  con$count()
+  print(con$find() %>% head(10))
+  con$drop()
+}
+
+```
+
+We can see that the information in the collections is the same as the SQL tables.  
+
+The advantages of using a NoSQL database are that it is more flexible in its structure and also takes up less disk space. This may be desirable if working with a very large dataset. However, the flexibility can be a disadvantage as well. Data relationships are not strictly enforced, which could lead to duplication and disorganization. Relational databases are often preferred if a dataset is not overly immense and / or cost is not an issue.
