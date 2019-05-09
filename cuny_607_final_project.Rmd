@@ -156,3 +156,9 @@ option_chain_df %>%
   mutate(Expiration=as.character(exp), midIV=midIV*100) %>% 
   ggplot(aes(x=Strike, y=midIV, colour=Expiration)) + geom_line() + labs(title=paste0(symbol, " Options Implied Volatility by Expiration and Strike"), x="Strike Price", y="Mid-Market Implied Volatility")
 ```
+
+We see that implied volatility is higher at lower strike prices than higher strike prices. This phenomenon is what options traders refer to as "volatility skew."  
+
+Theoretically the Black-Scholes model considers volatility to be a single constant number. It assumes that stock price movement percentages are normally distributed.  
+
+If the options market agreed with that assumption, every strike price would have the same implied volatility. We can see from the plot that this is clearly not the case. Because the market believes the true underlying distribution of stock price movement has a "fatter" left tail than normal, lower strikes trade at a higher price, and therefore higher implied volatility, than Black-Scholes would calculate.
