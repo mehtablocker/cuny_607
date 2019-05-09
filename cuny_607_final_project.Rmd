@@ -1,0 +1,158 @@
+---
+title: "CUNY 607"
+author: "mehtablocker"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+subtitle: Final Project
+---
+
+<style type="text/css">
+h3 {
+  color: DarkBlue;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+<br>
+
+###Options volatility
+
+__We will now examine implied volatility in the market. We do this by acquiring data on ticker symbol SPY, which is an exchange-traded fund (ETF) that replicates the S&P 500 index. Using the underlying stock and options price data, we calculate and plot the volatility curve or "smile."__
+
+<br>
+
+###Load libraries
+
+```{r libraries, message=FALSE, warning=FALSE}
+library(plyr)
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(ggplot2)
+library(rvest)
+require(quantmod)
+require(derivmkts)
+library(knitr)
+```
+
+<br>
+
+###Define variables
+
+We set the ticker symbol to SPY and the interest rate to 2.25 percent.
+
+```{r define_var}
+interest_rate <- 0.0225
+symbol <- "SPY"
+```
+
+<br>
+
+###Get last closing price
+
+We use the quantmod package to look up historical stock prices and save the most recent closing price.
+
+```{r close_price, message=FALSE, warnings=FALSE}
+price_df <- getSymbols(symbol, auto.assign=F, from=Sys.Date()-3) %>% as.data.frame()
+names(price_df) <- names(price_df) %>% gsub(paste0(symbol, "\\."), "", .)
+price_df <- price_df %>% 
+  rownames_to_column(var="Date") %>% 
+  mutate(Date=as.Date(Date)) %>% 
+  arrange(desc(Date)) %>% slice(1)
+stock_price <- price_df$Close
+price_df %>% head() %>% kable()
+```
+
+<br>
+
+###Get dividend info
+
+We look up the empirical dividend stream and convert it into a yield percent (to plug into the options pricing model.)
+
+```{r get_div, message=FALSE, warnings=FALSE}
+div_df <- getDividends(symbol, from = Sys.Date()-365, to=Sys.Date()) %>% as.data.frame()
+names(div_df) <- names(div_df) %>% gsub(paste0(symbol, "\\."), "", .)
+div_df <- div_df %>% rownames_to_column(var="Date") %>% mutate(Date=as.Date(Date))
+div_yield <- suppressWarnings( tryCatch( sum(div_df$div)/stock_price, error=function(e) 0))
+div_yield
+```
+
+<br>
+
+###Get options chain
+
+We use the quantmod package to retrieve options prices from Yahoo Finance. The implied volatility values are often missing or incorrect, so we will calculate them ourselves using the Black-Scholes formula from the derivmkts package. We do that by looping through the list of options and using the necessary information as inputs - stock price, strike, option type and price, time to expiration, dividend yield, and interest rate.
+
+```{r get_options, results="hide", message=FALSE, warnings=FALSE}
+### Get option prices
+option_chain_list <- getOptionChain(Symbols = symbol, Exp = NULL)
+option_chain_df <- data.frame()
+
+for (i in 1:length(option_chain_list)){
+  if (!is.null(option_chain_list[[i]]$calls) & !is.null(option_chain_list[[i]]$puts)){
+
+    exp <- names(option_chain_list)[[i]] %>% as.Date(., format="%b.%d.%Y")
+    t <- (as.numeric(exp-Sys.Date()))/365
+    call_df <- option_chain_list[[i]]$calls %>% mutate(callput="call", time=t, exp=exp)
+    put_df <- option_chain_list[[i]]$puts %>% mutate(callput="put", time=t, exp=exp)
+
+    ### Calculate Implied Vol
+    bidIV <- vector()
+    askIV <- vector()
+    for (k in 1:nrow(call_df)){
+      bidIV[k] <- tryCatch(bscallimpvol(s=stock_price, k=call_df$Strike[k], r=interest_rate, tt=call_df$time[k],
+                                        d=div_yield, price=call_df$Bid[k]), error=function(e) NA)
+      askIV[k] <- tryCatch(bscallimpvol(s=stock_price, k=call_df$Strike[k], r=interest_rate, tt=call_df$time[k],
+                                        d=div_yield, price=call_df$Ask[k]), error=function(e) NA)
+    }
+    call_df <- call_df %>% mutate(bidIV=suppressWarnings(as.numeric(bidIV)),
+                                  askIV=suppressWarnings(as.numeric(askIV)), midIV=(bidIV+askIV)/2)
+    bidIV <- vector()
+    askIV <- vector()
+    for (k in 1:nrow(put_df)){
+      bidIV[k] <- tryCatch(bsputimpvol(s=stock_price, k=put_df$Strike[k], r=interest_rate, tt=put_df$time[k],
+                                       d=div_yield, price=put_df$Bid[k]), error=function(e) NA)
+      askIV[k] <- tryCatch(bsputimpvol(s=stock_price, k=put_df$Strike[k], r=interest_rate, tt=put_df$time[k],
+                                       d=div_yield, price=put_df$Ask[k]), error=function(e) NA)
+    }
+    put_df <- put_df %>% mutate(bidIV=suppressWarnings(as.numeric(bidIV)),
+                                askIV=suppressWarnings(as.numeric(askIV)), midIV=(bidIV+askIV)/2)
+
+    option_chain_df <- rbind.fill(option_chain_df, call_df, put_df)
+  }
+}
+```
+
+```{r display_option_df}
+option_chain_df <- option_chain_df %>% 
+  filter(!is.na(midIV)) %>% mutate(underlying=symbol,
+                                   stock_price=stock_price,
+                                   price_date = price_df$Date)
+option_chain_df %>% head() %>% kable()
+```
+
+<br>
+
+###Plot volatility curve
+
+We use ggplot to show the volatility smile and term structure for all options expirations between three and nine months out.
+
+```{r plot_vol}
+option_chain_df %>% 
+  filter(exp>Sys.Date()+90, 
+         exp<Sys.Date()+270, 
+         Strike>=stock_price & callput=="call" | Strike<stock_price & callput=="put", 
+         OI>1000, 
+         Bid>=0.25) %>% 
+  mutate(Expiration=as.character(exp), midIV=midIV*100) %>% 
+  ggplot(aes(x=Strike, y=midIV, colour=Expiration)) + geom_line() + labs(title=paste0(symbol, " Options Implied Volatility by Expiration and Strike"), x="Strike Price", y="Mid-Market Implied Volatility")
+```
